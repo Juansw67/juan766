@@ -1,62 +1,96 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
 local espEnabled = false
 local teamCheck = true
 local aimbotEnabled = false
-local tracers = {}
 
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
+local espObjects = {}
 
-local FOV = 70
-local AimSmoothness = 0.15
-local aiming = false
+local FOV = 70 -- Campo de visão do aimbot (em graus)
+local AimSmoothness = 0.2 -- Quanto mais baixo, mais rápido/mortal a mira
 
-function createESP(player)
+-- ESP (igual script anterior, simplificado aqui)
+local function createESP(player)
+    if espObjects[player] then return end
     if player == LocalPlayer then return end
-    if player.Character and not player.Character:FindFirstChild("ESP_Box") then
-        local box = Instance.new("BoxHandleAdornment")
-        box.Name = "ESP_Box"
-        box.Size = Vector3.new(4, 6, 2)
-        box.Adornee = player.Character:FindFirstChild("HumanoidRootPart")
-        box.AlwaysOnTop = true
-        box.ZIndex = 10
-        box.Color3 = Color3.new(1, 0, 0)
-        box.Transparency = 0.5
-        box.Parent = player.Character
+    if not player.Character then return end
+    local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if not rootPart or not humanoid then return end
+
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "ESP_Box"
+    box.Adornee = rootPart
+    box.Size = Vector3.new(4, 6, 2)
+    box.AlwaysOnTop = true
+    box.ZIndex = 10
+    box.Transparency = 0.5
+    box.Color3 = (teamCheck and player.Team == LocalPlayer.Team) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    box.Parent = player.Character
+
+    espObjects[player] = {
+        Box = box,
+        Humanoid = humanoid
+    }
+end
+
+local function removeESP(player)
+    if espObjects[player] then
+        local esp = espObjects[player]
+        if esp.Box and esp.Box.Parent then esp.Box:Destroy() end
+        espObjects[player] = nil
     end
 end
 
-function removeESP(player)
-    if player.Character and player.Character:FindFirstChild("ESP_Box") then
-        player.Character.ESP_Box:Destroy()
+-- Atualiza ESP
+RunService.RenderStepped:Connect(function()
+    if not espEnabled then
+        for player, _ in pairs(espObjects) do
+            removeESP(player)
+        end
+        return
     end
-end
 
-function createTracer(player)
-    if player == LocalPlayer then return end
-    if not tracers[player] then
-        local line = Drawing.new("Line")
-        line.Color = Color3.new(0, 1, 0) -- verde
-        line.Thickness = 2
-        line.Transparency = 1
-        tracers[player] = line
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChildOfClass("Humanoid") then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid.Health > 0 then
+                local isAlly = teamCheck and player.Team == LocalPlayer.Team
+                if teamCheck and isAlly or not teamCheck then
+                    if not espObjects[player] then
+                        createESP(player)
+                    end
+                    local esp = espObjects[player]
+                    if esp then
+                        esp.Box.Color3 = isAlly and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,0,0)
+                    end
+                else
+                    removeESP(player)
+                end
+            else
+                removeESP(player)
+            end
+        else
+            removeESP(player)
+        end
     end
-end
+end)
 
-function removeTracer(player)
-    if tracers[player] then
-        tracers[player]:Remove()
-        tracers[player] = nil
-    end
-end
-
-function getClosestTarget()
-    local closest = nil
+-- Função para calcular o alvo mais próximo dentro do FOV
+local function getClosestTarget()
+    local closestPlayer = nil
     local shortestAngle = math.rad(FOV)
-    local camPos = Camera.CFrame.Position
-    local camLook = Camera.CFrame.LookVector
+
+    local cameraCFrame = Camera.CFrame
+    local cameraPos = cameraCFrame.Position
+    local cameraLookVector = cameraCFrame.LookVector
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChildOfClass("Humanoid") then
@@ -64,69 +98,54 @@ function getClosestTarget()
             if humanoid.Health > 0 then
                 if not (teamCheck and player.Team == LocalPlayer.Team) then
                     local rootPos = player.Character.HumanoidRootPart.Position
-                    local direction = (rootPos - camPos).Unit
-                    local angle = math.acos(camLook:Dot(direction))
+                    local direction = (rootPos - cameraPos).Unit
+                    local angle = math.acos(cameraLookVector:Dot(direction))
+
                     if angle < shortestAngle then
                         shortestAngle = angle
-                        closest = player
+                        closestPlayer = player
                     end
                 end
             end
         end
     end
-    return closest
+
+    return closestPlayer
 end
 
-RunService.RenderStepped:Connect(function()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local alreadyHasESP = player.Character:FindFirstChild("ESP_Box")
-            local shouldShow = espEnabled and (not teamCheck or player.Team ~= LocalPlayer.Team)
-
-            if shouldShow then
-                if not alreadyHasESP then
-                    createESP(player)
-                end
-                createTracer(player)
-
-                local tracer = tracers[player]
-                if tracer then
-                    local rootPos, onScreen = Camera:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
-                    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-                    tracer.From = screenCenter
-                    tracer.To = Vector2.new(rootPos.X, rootPos.Y)
-                    tracer.Visible = onScreen
-                end
-            else
-                if alreadyHasESP then
-                    removeESP(player)
-                end
-                removeTracer(player)
-            end
-        else
-            removeTracer(player)
-        end
+-- Aimbot ativado apenas enquanto segura o botão esquerdo do mouse
+local aiming = false
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        aiming = true
     end
+end)
 
-    -- Aimbot
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        aiming = false
+    end
+end)
+
+-- Mira suave para o alvo
+RunService.RenderStepped:Connect(function()
     if aimbotEnabled and aiming then
         local target = getClosestTarget()
         if target and target.Character and target.Character:FindFirstChild("Head") then
             local headPos = target.Character.Head.Position
-            local camPos = Camera.CFrame.Position
-            local direction = (headPos - camPos).Unit
-            local currentLook = Camera.CFrame.LookVector
-            local newLook = currentLook:Lerp(direction, AimSmoothness)
-            Camera.CFrame = CFrame.new(camPos, camPos + newLook)
+            local cameraPos = Camera.CFrame.Position
+            local direction = (headPos - cameraPos).Unit
+
+            local currentLookVector = Camera.CFrame.LookVector
+            local newLookVector = currentLookVector:Lerp(direction, AimSmoothness)
+
+            Camera.CFrame = CFrame.new(cameraPos, cameraPos + newLookVector)
         end
     end
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-    removeESP(player)
-    removeTracer(player)
-end)
-
+-- Atalhos para ligar/desligar ESP, TeamCheck e Aimbot
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.E then
@@ -138,13 +157,5 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     elseif input.KeyCode == Enum.KeyCode.Q then
         aimbotEnabled = not aimbotEnabled
         print("Aimbot: " .. (aimbotEnabled and "ON" or "OFF"))
-    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-        aiming = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        aiming = false
     end
 end)
