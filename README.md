@@ -10,8 +10,7 @@ local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local Drawing = Drawing
 
-local FOV = 100
-local AimSmoothness = 0.15
+local FOV = 200 -- FOV aumentado aqui
 
 -- FOV Circle
 local FOVCircle = Drawing.new("Circle")
@@ -91,7 +90,6 @@ end
 function getClosestTarget()
     local closest = nil
     local shortestDist = math.huge
-    local camPos = Camera.CFrame.Position
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and isEnemy(player) then
@@ -113,11 +111,10 @@ function getClosestTarget()
 end
 
 RunService.RenderStepped:Connect(function()
-    -- Atualizar FOV Circle
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Radius = FOV
     FOVCircle.Visible = true
 
-    -- Atualizar Notificação
     notifBox.Position = Vector2.new(10, Camera.ViewportSize.Y - 70)
     notification.Position = Vector2.new(15, Camera.ViewportSize.Y - 65)
     notifBox.Visible = true
@@ -149,17 +146,18 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Aimbot
     if aimbotEnabled then
         local target = getClosestTarget()
         if target and target.Character and target.Character:FindFirstChild("Head") then
             local headPos = target.Character.Head.Position
-            local camPos = Camera.CFrame.Position
-            local direction = (headPos - camPos).Unit
-            local currentLook = Camera.CFrame.LookVector
-            local newLook = currentLook:Lerp(direction, AimSmoothness)
-            Camera.CFrame = CFrame.new(camPos, camPos + newLook)
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, headPos)
         end
+    end
+
+    -- Atualizar botões
+    for _, btn in pairs(buttons) do
+        btn.box.Color = btn.enabled() and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+        btn.text.Text = btn.label .. ": " .. (btn.enabled() and "ON" or "OFF")
     end
 end)
 
@@ -179,5 +177,59 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     elseif input.KeyCode == Enum.KeyCode.Q then
         aimbotEnabled = not aimbotEnabled
         updateNotification()
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = UserInputService:GetMouseLocation()
+        for _, btn in pairs(buttons) do
+            local pos = btn.box.Position
+            local size = btn.box.Size
+            if mousePos.X >= pos.X and mousePos.X <= pos.X + size.X and
+               mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y then
+                btn.toggle()
+            end
+        end
     end
 end)
+
+-- Criação dos botões
+local buttonWidth = 110
+local buttonHeight = 30
+local buttonY = Camera.ViewportSize.Y - 110
+
+buttons = {
+    ESP = {
+        label = "ESP",
+        pos = Vector2.new(10, buttonY),
+        enabled = function() return espEnabled end,
+        toggle = function() espEnabled = not espEnabled updateNotification() end
+    },
+    Aimbot = {
+        label = "Aimbot",
+        pos = Vector2.new(125, buttonY),
+        enabled = function() return aimbotEnabled end,
+        toggle = function() aimbotEnabled = not aimbotEnabled updateNotification() end
+    },
+    TeamCheck = {
+        label = "TeamCheck",
+        pos = Vector2.new(240, buttonY),
+        enabled = function() return teamCheck end,
+        toggle = function() teamCheck = not teamCheck updateNotification() end
+    }
+}
+
+for name, btn in pairs(buttons) do
+    btn.box = Drawing.new("Square")
+    btn.box.Size = Vector2.new(buttonWidth, buttonHeight)
+    btn.box.Position = btn.pos
+    btn.box.Filled = true
+    btn.box.Color = Color3.new(0.1, 0.1, 0.1)
+    btn.box.Transparency = 0.6
+    btn.box.Visible = true
+
+    btn.text = Drawing.new("Text")
+    btn.text.Position = btn.pos + Vector2.new(10, 5)
+    btn.text.Size = 20
+    btn.text.Color = Color3.new(1, 1, 1)
+    btn.text.Outline = true
+    btn.text.Text = btn.label
+    btn.text.Visible = true
+end
