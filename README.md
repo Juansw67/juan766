@@ -10,8 +10,8 @@ local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local Drawing = Drawing
 
-local FOV = 110 -- FOV atualizado
-local AimSmoothness = 0.15 -- suavização reativada
+local FOV = 110 
+local AimSmoothness = 0.05
 
 -- FOV Circle
 local FOVCircle = Drawing.new("Circle")
