@@ -11,7 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local Drawing = Drawing
 
 local FOV = 110 -- FOV atualizado
-local AimSmoothness = 0.15 -- suavização ativada
+local AimSmoothness = 0.15 -- suavização reativada
 
 -- FOV Circle
 local FOVCircle = Drawing.new("Circle")
@@ -156,7 +156,8 @@ RunService.RenderStepped:Connect(function()
             local headPos = target.Character.Head.Position
             local camPos = Camera.CFrame.Position
             local direction = (headPos - camPos).Unit
-            local newLook = Camera.CFrame.LookVector:Lerp(direction, AimSmoothness)
+            local currentLook = Camera.CFrame.LookVector
+            local newLook = currentLook:Lerp(direction, AimSmoothness)
             Camera.CFrame = CFrame.new(camPos, camPos + newLook)
         end
     end
